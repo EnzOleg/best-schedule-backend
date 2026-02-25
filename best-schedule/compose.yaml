@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: best_schedule_db
+    restart: always
+    environment:
+      POSTGRES_DB: best_schedule
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
