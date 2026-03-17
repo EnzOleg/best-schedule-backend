@@ -72,6 +72,16 @@ public class ScheduleService {
         return scheduleRepository.save(item);
     }
 
+    public boolean deleteSchedule(Long id) {
+
+        if (!scheduleRepository.existsById(id)) {
+            throw new RuntimeException("Schedule not found");
+        }
+
+        scheduleRepository.deleteById(id);
+        return true;
+    }
+
     public List<ScheduleItem> getByGroup(Long groupId) {
         return scheduleRepository.findByGroupId(groupId);
     }

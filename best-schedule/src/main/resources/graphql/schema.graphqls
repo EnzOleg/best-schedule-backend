@@ -78,6 +78,7 @@ input CreateScheduleInput {
 
 extend type Mutation {
     createSchedule(input: CreateScheduleInput!): ScheduleItem
+    deleteSchedule(id: ID!): Boolean
 }
 
 extend type Query {

@@ -47,4 +47,10 @@ public class ScheduleResolver {
     ) {
         return scheduleService.scheduleForMe(startDate, endDate);
     }
+
+    @MutationMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public Boolean deleteSchedule(@Argument Long id) {
+        return scheduleService.deleteSchedule(id);
+    }
 }
