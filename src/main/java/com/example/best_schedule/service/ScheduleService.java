@@ -1,6 +1,7 @@
 package com.example.best_schedule.service;
 
 import com.example.best_schedule.dto.CreateScheduleInput;
+import com.example.best_schedule.service.ScheduleGeneratorService;
 import com.example.best_schedule.entity.*;
 import com.example.best_schedule.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,11 @@ public class ScheduleService {
     private final GroupRepository groupRepository;
     private final SubjectRepository subjectRepository;
     private final UserRepository userRepository;
+    private final ScheduleGeneratorService generatorService;
+
+    public List<ScheduleItem> generateForGroup(Long groupId, LocalDate startDate, int days) {
+        return generatorService.generateSchedule(groupId, startDate, days);
+    }
 
     public ScheduleItem createSchedule(CreateScheduleInput input) {
 
@@ -31,9 +37,6 @@ public class ScheduleService {
         User teacher = userRepository.findById(input.getTeacherId())
                 .orElseThrow(() -> new RuntimeException("Teacher not found"));
 
-        if (teacher.getRole() != Role.TEACHER) {
-            throw new RuntimeException("User is not a teacher");
-        }
 
         LocalDate date = LocalDate.parse(input.getDate());
         LocalTime startTime = LocalTime.parse(input.getStartTime());

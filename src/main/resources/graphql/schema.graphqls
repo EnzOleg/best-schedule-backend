@@ -87,6 +87,7 @@ input CreateScheduleInput {
 
 extend type Mutation {
     createSchedule(input: CreateScheduleInput!): ScheduleItem
+    createMultipleSchedules(input: [CreateScheduleInput!]!): [ScheduleItem!]!
     deleteSchedule(id: ID!): Boolean
 }
 
@@ -102,6 +103,15 @@ type ScheduleItem {
     classroom: String
     group: Group
     subject: Subject
+    teacher: User
+    homework: [Homework!]   
+}
+
+type Homework {
+    id: ID!
+    text: String
+    date: String
+    scheduleItem: ScheduleItem
     teacher: User
 }
 

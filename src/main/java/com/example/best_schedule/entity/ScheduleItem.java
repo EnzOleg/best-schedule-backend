@@ -2,9 +2,9 @@ package com.example.best_schedule.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List; 
 
 @Entity
 @Getter
@@ -38,4 +38,7 @@ public class ScheduleItem {
     @ManyToOne(optional = false)
     @JoinColumn(name = "teacher_id")
     private User teacher;
+
+    @OneToMany(mappedBy = "scheduleItem")
+    private List<Homework> homework;
 }

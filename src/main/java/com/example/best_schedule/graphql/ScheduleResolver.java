@@ -8,6 +8,8 @@ import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Controller
@@ -20,6 +22,19 @@ public class ScheduleResolver {
     @MutationMapping
     public ScheduleItem createSchedule(@Argument CreateScheduleInput input) {
         return scheduleService.createSchedule(input);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @MutationMapping
+    public List<ScheduleItem> createMultipleSchedules(@Argument("input") List<CreateScheduleInput> input) {
+        if (input == null) {
+            throw new IllegalArgumentException("input не может быть null");
+        }
+        List<ScheduleItem> createdItems = new ArrayList<>();
+        for (CreateScheduleInput item : input) {
+            createdItems.add(scheduleService.createSchedule(item));
+        }
+        return createdItems;
     }
 
     @QueryMapping
@@ -52,5 +67,13 @@ public class ScheduleResolver {
     @PreAuthorize("hasRole('ADMIN')")
     public Boolean deleteSchedule(@Argument Long id) {
         return scheduleService.deleteSchedule(id);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @MutationMapping
+    public List<ScheduleItem> generateScheduleForGroup(@Argument Long groupId,
+                                                    @Argument String startDate,
+                                                    @Argument int days) {
+        return scheduleService.generateForGroup(groupId, LocalDate.parse(startDate), days);
     }
 }
