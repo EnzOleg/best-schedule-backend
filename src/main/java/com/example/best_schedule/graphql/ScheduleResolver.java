@@ -1,6 +1,7 @@
 package com.example.best_schedule.graphql;
 
 import com.example.best_schedule.dto.CreateScheduleInput;
+import com.example.best_schedule.dto.GenerateScheduleInput;
 import com.example.best_schedule.entity.ScheduleItem;
 import com.example.best_schedule.service.ScheduleService;
 import lombok.RequiredArgsConstructor;
@@ -69,11 +70,9 @@ public class ScheduleResolver {
         return scheduleService.deleteSchedule(id);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
     @MutationMapping
-    public List<ScheduleItem> generateScheduleForGroup(@Argument Long groupId,
-                                                    @Argument String startDate,
-                                                    @Argument int days) {
-        return scheduleService.generateForGroup(groupId, LocalDate.parse(startDate), days);
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<ScheduleItem> generateScheduleForGroup(@Argument GenerateScheduleInput input) {
+        return scheduleService.generateForGroup(input.getGroupId(), input.getStartDate(), input.getDays());
     }
 }

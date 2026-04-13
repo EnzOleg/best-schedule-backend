@@ -1,12 +1,12 @@
 package com.example.best_schedule.service;
 
 import com.example.best_schedule.dto.CreateScheduleInput;
-import com.example.best_schedule.service.ScheduleGeneratorService;
 import com.example.best_schedule.entity.*;
 import com.example.best_schedule.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,14 +20,15 @@ public class ScheduleService {
     private final GroupRepository groupRepository;
     private final SubjectRepository subjectRepository;
     private final UserRepository userRepository;
+    private final ClassroomRepository classroomRepository;
     private final ScheduleGeneratorService generatorService;
 
     public List<ScheduleItem> generateForGroup(Long groupId, LocalDate startDate, int days) {
         return generatorService.generateSchedule(groupId, startDate, days);
     }
 
+    @Transactional
     public ScheduleItem createSchedule(CreateScheduleInput input) {
-
         Group group = groupRepository.findById(input.getGroupId())
                 .orElseThrow(() -> new RuntimeException("Group not found"));
 
@@ -37,36 +38,54 @@ public class ScheduleService {
         User teacher = userRepository.findById(input.getTeacherId())
                 .orElseThrow(() -> new RuntimeException("Teacher not found"));
 
-
         LocalDate date = LocalDate.parse(input.getDate());
         LocalTime startTime = LocalTime.parse(input.getStartTime());
         LocalTime endTime = LocalTime.parse(input.getEndTime());
 
-        if (scheduleRepository
-                .existsByGroupIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
-                        group.getId(),
-                        date,
-                        endTime,
-                        startTime
-                )) {
+        // Получаем кабинет через отдельный метод (classroom не меняется после присвоения)
+        Classroom classroom = resolveClassroom(input);
+
+        // Проверка вместимости
+        int studentCount = group.getStudents().size();
+        if (classroom.getCapacity() != null && studentCount > classroom.getCapacity()) {
+            throw new RuntimeException("Classroom capacity (" + classroom.getCapacity() +
+                    ") is less than number of students in group (" + studentCount + ")");
+        }
+
+        // Проверка типа кабинета
+        if (subject.getRequiredClassroomType() != null && classroom.getType() != subject.getRequiredClassroomType()) {
+            throw new RuntimeException("Classroom type must be " + subject.getRequiredClassroomType() +
+                    " for subject " + subject.getName());
+        }
+
+        // Проверка, разрешён ли кабинет для предмета
+        boolean allowed = subject.getAllowedClassrooms().stream()
+                .anyMatch(sc -> sc.getClassroom().getId().equals(classroom.getId()));
+        if (!allowed) {
+            throw new RuntimeException("Classroom " + classroom.getName() + " is not allowed for subject " + subject.getName());
+        }
+
+        // Проверка пересечений
+        if (scheduleRepository.existsByGroupIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
+                group.getId(), date, endTime, startTime)) {
             throw new RuntimeException("Group already has a class at this time");
         }
 
-        if (scheduleRepository
-                .existsByTeacherIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
-                        teacher.getId(),
-                        date,
-                        endTime,
-                        startTime
-                )) {
+        if (scheduleRepository.existsByTeacherIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
+                teacher.getId(), date, endTime, startTime)) {
             throw new RuntimeException("Teacher already has a class at this time");
+        }
+
+        if (scheduleRepository.existsByClassroomIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
+                classroom.getId(), date, endTime, startTime)) {
+            throw new RuntimeException("Classroom is already occupied at this time");
         }
 
         ScheduleItem item = ScheduleItem.builder()
                 .date(date)
                 .startTime(startTime)
                 .endTime(endTime)
-                .classroom(input.getClassroom())
+                .classroom(classroom)
                 .group(group)
                 .subject(subject)
                 .teacher(teacher)
@@ -75,12 +94,26 @@ public class ScheduleService {
         return scheduleRepository.save(item);
     }
 
-    public boolean deleteSchedule(Long id) {
+    // Вспомогательный метод для получения кабинета
+    private Classroom resolveClassroom(CreateScheduleInput input) {
+        if (input.getClassroomId() != null) {
+            return classroomRepository.findById(input.getClassroomId())
+                    .orElseThrow(() -> new RuntimeException("Classroom not found by id"));
+        } else if (input.getClassroom() != null && !input.getClassroom().isBlank()) {
+            return classroomRepository.findAll().stream()
+                    .filter(c -> c.getName().equals(input.getClassroom()))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Classroom not found by name: " + input.getClassroom()));
+        } else {
+            throw new RuntimeException("Classroom is required");
+        }
+    }
 
+    @Transactional
+    public boolean deleteSchedule(Long id) {
         if (!scheduleRepository.existsById(id)) {
             throw new RuntimeException("Schedule not found");
         }
-
         scheduleRepository.deleteById(id);
         return true;
     }
@@ -89,27 +122,13 @@ public class ScheduleService {
         return scheduleRepository.findByGroupId(groupId);
     }
 
-    public List<ScheduleItem> getScheduleForWeek(
-            Long groupId,
-            String startDate,
-            String endDate
-    ) {
-
+    public List<ScheduleItem> getScheduleForWeek(Long groupId, String startDate, String endDate) {
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
-
-        return scheduleRepository.findByGroupIdAndDateBetween(
-                groupId,
-                start,
-                end
-        );
+        return scheduleRepository.findByGroupIdAndDateBetween(groupId, start, end);
     }
 
-    public List<ScheduleItem> scheduleForMe(
-            String startDate,
-            String endDate
-    ) {
-
+    public List<ScheduleItem> scheduleForMe(String startDate, String endDate) {
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
 
@@ -119,36 +138,21 @@ public class ScheduleService {
                 .getPrincipal();
 
         if (currentUser.getRole() == Role.STUDENT) {
-
-            Group group = groupRepository
-                    .findByStudentsId(currentUser.getId())
-                    .orElseThrow(() ->
-                            new RuntimeException("Student has no group"));
-
-            return scheduleRepository
-                    .findByGroupIdAndDateBetween(
-                            group.getId(),
-                            start,
-                            end
-                    );
+            Group group = groupRepository.findByStudentsId(currentUser.getId())
+                    .orElseThrow(() -> new RuntimeException("Student has no group"));
+            return scheduleRepository.findByGroupIdAndDateBetween(group.getId(), start, end);
         }
 
         if (currentUser.getRole() == Role.TEACHER) {
-
-            return scheduleRepository
-                    .findByTeacherIdAndDateBetween(
-                            currentUser.getId(),
-                            start,
-                            end
-                    );
+            return scheduleRepository.findByTeacherIdAndDateBetween(currentUser.getId(), start, end);
         }
 
         // ADMIN
         return scheduleRepository.findByDateBetween(start, end);
     }
-    
+
     public ScheduleItem getById(Long id) {
-    return scheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Schedule not found"));
-}
+        return scheduleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Schedule not found"));
+    }
 }

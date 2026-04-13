@@ -40,4 +40,7 @@ public interface ScheduleRepository extends JpaRepository<ScheduleItem, Long> {
             LocalTime endTime,
             LocalTime startTime
     );
+
+    boolean existsByClassroomIdAndDateAndStartTimeLessThanAndEndTimeGreaterThan(
+    Long classroomId, LocalDate date, LocalTime endTime, LocalTime startTime);
 }

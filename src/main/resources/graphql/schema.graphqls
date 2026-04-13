@@ -160,3 +160,13 @@ extend type Query {
 extend type Mutation {
     createLecture(input: CreateLectureInput!): Lecture
 }
+
+input GenerateScheduleInput {
+    groupId: ID!
+    startDate: String!
+    days: Int!
+}
+
+extend type Mutation {
+    generateScheduleForGroup(input: GenerateScheduleInput!): [ScheduleItem!]!
+}

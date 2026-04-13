@@ -2,9 +2,10 @@ package com.example.best_schedule.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.List; 
+import java.util.List;
 
 @Entity
 @Getter
@@ -20,12 +21,13 @@ public class ScheduleItem {
     private Long id;
 
     private LocalDate date;
-
     private LocalTime startTime;
-
     private LocalTime endTime;
 
-    private String classroom;
+    // Вместо classroom (String) теперь ссылка на Classroom
+    @ManyToOne
+    @JoinColumn(name = "classroom_id")
+    private Classroom classroom;
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "group_id")
