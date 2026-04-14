@@ -1,7 +1,9 @@
 package com.example.best_schedule.graphql;
 
+import com.example.best_schedule.dto.CreateSubjectInput;
 import com.example.best_schedule.entity.Subject;
 import com.example.best_schedule.service.SubjectService;
+import com.example.best_schedule.dto.AddSubjectDetailsInput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
@@ -32,5 +34,17 @@ public class SubjectResolver {
     @MutationMapping
     public Boolean deleteSubject(@Argument Long id) {
         return subjectService.deleteSubject(id);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @MutationMapping
+    public Subject createSubjectWithDetails(@Argument CreateSubjectInput input) {
+        return subjectService.createSubjectWithDetails(input);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @MutationMapping
+    public Subject addSubjectDetails(@Argument AddSubjectDetailsInput input) {
+        return subjectService.addSubjectDetails(input);
     }
 }

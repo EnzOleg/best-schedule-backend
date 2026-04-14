@@ -1,40 +1,61 @@
+# ==================== БАЗОВЫЕ ТИПЫ ====================
+
 type Query {
-     users: [User]
-     me: User
- }
-
- type Mutation {
-     register(input: RegisterInput!): User
-     login(email: String!, password: String!): AuthResponse
- }
-
- type User {
-     id: ID
-     name: String
-     email: String
-     role: String
- }
-
- type AuthResponse {
-     token: String
-     user: User
- }
-
- input RegisterInput {
-     name: String!
-     email: String!
-     password: String!
-     role: String!
- }
-
- extend type Mutation {
-    updateUser(
-        id: ID!
-        name: String
-        email: String
-        role: String
-    ): User
+    users: [User]
+    me: User
+    groups: [Group]
+    subjects: [Subject]
+    scheduleByGroup(groupId: ID!): [ScheduleItem]
+    scheduleForWeek(groupId: ID!, startDate: String!, endDate: String!): [ScheduleItem]
+    scheduleForMe(startDate: String!, endDate: String!): [ScheduleItem]
+    lecturesByGroup(groupId: ID!, startDate: String!, endDate: String!): [Lecture]
+    lecturesByTeacher(teacherId: ID!, startDate: String!, endDate: String!): [Lecture]
+    lecturesForMe(startDate: String!, endDate: String!): [Lecture]
 }
+
+type Mutation {
+    register(input: RegisterInput!): User
+    login(email: String!, password: String!): AuthResponse
+    updateUser(id: ID!, name: String, email: String, role: String): User
+
+    createGroup(name: String!, course: Int, specialty: String, faculty: String): Group
+    addStudentToGroup(groupId: ID!, studentId: ID!): Group
+    removeStudentFromGroup(groupId: ID!, studentId: ID!): Group
+
+    createSubject(name: String!): Subject
+    deleteSubject(id: ID!): Boolean
+
+    createSchedule(input: CreateScheduleInput!): ScheduleItem
+    createMultipleSchedules(input: [CreateScheduleInput!]!): [ScheduleItem!]!
+    deleteSchedule(id: ID!): Boolean
+
+    createLecture(input: CreateLectureInput!): Lecture
+
+    generateScheduleForGroup(input: GenerateScheduleInput!): [ScheduleItem!]!
+}
+
+# ==================== ПОЛЬЗОВАТЕЛИ ====================
+
+type User {
+    id: ID
+    name: String
+    email: String
+    role: String
+}
+
+type AuthResponse {
+    token: String
+    user: User
+}
+
+input RegisterInput {
+    name: String!
+    email: String!
+    password: String!
+    role: String!
+}
+
+# ==================== ГРУППЫ ====================
 
 type Group {
     id: ID
@@ -45,67 +66,54 @@ type Group {
     students: [User]
 }
 
- extend type Query {
-     groups: [Group]
- }
-
-extend type Mutation {
-    createGroup(
-        name: String!,
-        course: Int,
-        specialty: String,
-        faculty: String
-    ): Group
-
-    addStudentToGroup(groupId: ID!, studentId: ID!): Group
-    removeStudentFromGroup(groupId: ID!, studentId: ID!): Group
-}
+# ==================== ПРЕДМЕТЫ ====================
 
 type Subject {
     id: ID
     name: String
 }
 
-extend type Query {
-    subjects: [Subject]
+# ==================== КАБИНЕТЫ ====================
+
+type Classroom {
+    id: ID!
+    name: String!
+    capacity: Int
+    type: String
 }
 
-extend type Mutation {
-    createSubject(name: String!): Subject
-    deleteSubject(id: ID!): Boolean
-}
-
-input CreateScheduleInput {
-    date: String!
-    startTime: String!
-    endTime: String!
-    classroom: String!
-    groupId: ID!
-    subjectId: ID!
-    teacherId: ID!
-}
-
-extend type Mutation {
-    createSchedule(input: CreateScheduleInput!): ScheduleItem
-    createMultipleSchedules(input: [CreateScheduleInput!]!): [ScheduleItem!]!
-    deleteSchedule(id: ID!): Boolean
-}
-
-extend type Query {
-    scheduleByGroup(groupId: ID!): [ScheduleItem]
-}
+# ==================== РАСПИСАНИЕ ====================
 
 type ScheduleItem {
     id: ID
     date: String
     startTime: String
     endTime: String
-    classroom: String
+    classroom: Classroom          # теперь объект, а не строка
     group: Group
     subject: Subject
     teacher: User
-    homework: [Homework!]   
+    homework: [Homework!]
 }
+
+input CreateScheduleInput {
+    date: String!
+    startTime: String!
+    endTime: String!
+    classroom: String             # для обратной совместимости (имя кабинета)
+    classroomId: ID               # можно передавать ID кабинета
+    groupId: ID!
+    subjectId: ID!
+    teacherId: ID!
+}
+
+input GenerateScheduleInput {
+    groupId: ID!
+    startDate: String!
+    days: Int!
+}
+
+# ==================== ДОМАШНИЕ ЗАДАНИЯ ====================
 
 type Homework {
     id: ID!
@@ -115,18 +123,7 @@ type Homework {
     teacher: User
 }
 
-extend type Query {
-    scheduleForWeek(
-        groupId: ID!,
-        startDate: String!,
-        endDate: String!
-    ): [ScheduleItem]
-
-    scheduleForMe(
-        startDate: String!,
-        endDate: String!
-    ): [ScheduleItem]
-}
+# ==================== ЛЕКЦИИ ====================
 
 type Lecture {
     id: ID
@@ -149,24 +146,48 @@ input CreateLectureInput {
     groupId: ID
     subjectId: ID
     teacherId: ID
+    title: String
+    text: String
+}
+
+input GroupHoursInput {
+    groupId: ID!
+    hours: Int!
+}
+
+input CreateSubjectInput {
+    name: String!
+    requiredClassroomType: String
+    allowedClassroomIds: [ID!]
+    groupHours: [GroupHoursInput!]
+    teacherIds: [ID!]
+}
+
+extend type Mutation {
+    createSubjectWithDetails(input: CreateSubjectInput!): Subject
+}
+
+input AddSubjectDetailsInput {
+    subjectId: ID!
+    allowedClassroomIds: [ID!]
+    groupHours: [GroupHoursInput!]
+    teacherIds: [ID!]
+}
+
+extend type Mutation {
+    addSubjectDetails(input: AddSubjectDetailsInput!): Subject
 }
 
 extend type Query {
-    lecturesByGroup(groupId: ID!, startDate: String!, endDate: String!): [Lecture]
-    lecturesByTeacher(teacherId: ID!, startDate: String!, endDate: String!): [Lecture]
-    lecturesForMe(startDate: String!, endDate: String!): [Lecture]
+    classrooms: [Classroom]
+}
+
+input CreateClassroomInput {
+    name: String!
+    capacity: Int
+    type: String!   # "AUDITORIUM", "LABORATORY", "GYM"
 }
 
 extend type Mutation {
-    createLecture(input: CreateLectureInput!): Lecture
-}
-
-input GenerateScheduleInput {
-    groupId: ID!
-    startDate: String!
-    days: Int!
-}
-
-extend type Mutation {
-    generateScheduleForGroup(input: GenerateScheduleInput!): [ScheduleItem!]!
+    createClassrooms(input: [CreateClassroomInput!]!): [Classroom!]!
 }

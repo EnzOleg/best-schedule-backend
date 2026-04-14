@@ -1,6 +1,7 @@
 package com.example.best_schedule.service;
 
 import com.example.best_schedule.dto.CreateSubjectInput;
+import com.example.best_schedule.dto.AddSubjectDetailsInput;
 import com.example.best_schedule.dto.GroupHoursInput;
 import com.example.best_schedule.entity.*;
 import com.example.best_schedule.repository.*;
@@ -19,10 +20,11 @@ public class SubjectService {
     private final GroupRepository groupRepository;
     private final SubjectClassroomRepository subjectClassroomRepository;
     private final SubjectGroupHoursRepository subjectGroupHoursRepository;
-    private final SubjectTeacherRepository subjectTeacherRepository;   // <-- добавить
+    private final SubjectTeacherRepository subjectTeacherRepository;
     private final UserRepository userRepository;
 
-    // Простое создание предмета (для обратной совместимости)
+    // Убираем любые лишние зависимости (например, UserService)
+
     public Subject createSubject(String name) {
         Subject subject = Subject.builder()
                 .name(name)
@@ -30,9 +32,13 @@ public class SubjectService {
         return subjectRepository.save(subject);
     }
 
-    // Расширенное создание предмета с кабинетами, часами и преподавателями
     @Transactional
     public Subject createSubjectWithDetails(CreateSubjectInput input) {
+        // Проверка на дубликат имени
+        if (subjectRepository.findAll().stream().anyMatch(s -> s.getName().equals(input.getName()))) {
+            throw new RuntimeException("Subject with this name already exists");
+        }
+
         Subject subject = Subject.builder()
                 .name(input.getName())
                 .requiredClassroomType(input.getRequiredClassroomType())
@@ -72,6 +78,9 @@ public class SubjectService {
             for (Long teacherId : input.getTeacherIds()) {
                 User teacher = userRepository.findById(teacherId)
                         .orElseThrow(() -> new RuntimeException("Teacher not found: " + teacherId));
+                if (teacher.getRole() != Role.TEACHER) {
+                    throw new RuntimeException("User is not a teacher: " + teacherId);
+                }
                 SubjectTeacher st = SubjectTeacher.builder()
                         .subject(saved)
                         .teacher(teacher)
@@ -83,7 +92,54 @@ public class SubjectService {
         return saved;
     }
 
-    // Удаление предмета с каскадным удалением всех связей
+    @Transactional
+    public Subject addSubjectDetails(AddSubjectDetailsInput input) {
+        Subject subject = subjectRepository.findById(input.getSubjectId())
+                .orElseThrow(() -> new RuntimeException("Subject not found"));
+
+        if (input.getAllowedClassroomIds() != null) {
+            for (Long classroomId : input.getAllowedClassroomIds()) {
+                Classroom classroom = classroomRepository.findById(classroomId)
+                        .orElseThrow(() -> new RuntimeException("Classroom not found: " + classroomId));
+                SubjectClassroom sc = SubjectClassroom.builder()
+                        .subject(subject)
+                        .classroom(classroom)
+                        .build();
+                subjectClassroomRepository.save(sc);
+            }
+        }
+
+        if (input.getGroupHours() != null) {
+            for (GroupHoursInput gh : input.getGroupHours()) {
+                Group group = groupRepository.findById(gh.getGroupId())
+                        .orElseThrow(() -> new RuntimeException("Group not found: " + gh.getGroupId()));
+                SubjectGroupHours sgh = SubjectGroupHours.builder()
+                        .subject(subject)
+                        .group(group)
+                        .hours(gh.getHours())
+                        .build();
+                subjectGroupHoursRepository.save(sgh);
+            }
+        }
+
+        if (input.getTeacherIds() != null) {
+            for (Long teacherId : input.getTeacherIds()) {
+                User teacher = userRepository.findById(teacherId)
+                        .orElseThrow(() -> new RuntimeException("Teacher not found: " + teacherId));
+                if (teacher.getRole() != Role.TEACHER) {
+                    throw new RuntimeException("User is not a teacher: " + teacherId);
+                }
+                SubjectTeacher st = SubjectTeacher.builder()
+                        .subject(subject)
+                        .teacher(teacher)
+                        .build();
+                subjectTeacherRepository.save(st);
+            }
+        }
+
+        return subject;
+    }
+
     @Transactional
     public boolean deleteSubject(Long id) {
         if (!subjectRepository.existsById(id)) {
@@ -91,7 +147,7 @@ public class SubjectService {
         }
         subjectClassroomRepository.deleteBySubjectId(id);
         subjectGroupHoursRepository.deleteBySubjectId(id);
-        subjectTeacherRepository.deleteBySubjectId(id);   // <-- добавить
+        subjectTeacherRepository.deleteBySubjectId(id);
         subjectRepository.deleteById(id);
         return true;
     }

@@ -4,6 +4,8 @@ import com.example.best_schedule.dto.CreateScheduleInput;
 import com.example.best_schedule.dto.GenerateScheduleInput;
 import com.example.best_schedule.entity.ScheduleItem;
 import com.example.best_schedule.service.ScheduleService;
+
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -72,6 +74,7 @@ public class ScheduleResolver {
 
     @MutationMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public List<ScheduleItem> generateScheduleForGroup(@Argument GenerateScheduleInput input) {
         return scheduleService.generateForGroup(input.getGroupId(), input.getStartDate(), input.getDays());
     }
