@@ -31,7 +31,6 @@ type Mutation {
 
     createLecture(input: CreateLectureInput!): Lecture
 
-    generateScheduleForGroup(input: GenerateScheduleInput!): [ScheduleItem!]!
 }
 
 # ==================== ПОЛЬЗОВАТЕЛИ ====================
@@ -105,12 +104,6 @@ input CreateScheduleInput {
     groupId: ID!
     subjectId: ID!
     teacherId: ID!
-}
-
-input GenerateScheduleInput {
-    groupId: ID!
-    startDate: String!
-    days: Int!
 }
 
 # ==================== ДОМАШНИЕ ЗАДАНИЯ ====================
@@ -190,4 +183,24 @@ input CreateClassroomInput {
 
 extend type Mutation {
     createClassrooms(input: [CreateClassroomInput!]!): [Classroom!]!
+}
+
+input SubjectHoursInput {
+    subjectId: ID!
+    hours: Int!
+}
+
+input GroupScheduleInput {
+    groupId: ID!
+    subjectHours: [SubjectHoursInput!]!
+}
+
+input GenerateScheduleRequest {
+    groups: [GroupScheduleInput!]!   # можно передать одну или несколько групп
+    startDate: String!
+    days: Int!
+}
+
+extend type Mutation {
+    generateSchedule(request: GenerateScheduleRequest!): [ScheduleItem!]!
 }

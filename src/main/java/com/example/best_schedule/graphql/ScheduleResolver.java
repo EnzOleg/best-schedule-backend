@@ -2,7 +2,10 @@ package com.example.best_schedule.graphql;
 
 import com.example.best_schedule.dto.CreateScheduleInput;
 import com.example.best_schedule.dto.GenerateScheduleInput;
+import com.example.best_schedule.dto.GenerateScheduleRequest;
+import com.example.best_schedule.dto.GroupScheduleInput;
 import com.example.best_schedule.entity.ScheduleItem;
+import com.example.best_schedule.service.ScheduleGeneratorService;
 import com.example.best_schedule.service.ScheduleService;
 
 import jakarta.transaction.Transactional;
@@ -20,6 +23,7 @@ import java.util.List;
 public class ScheduleResolver {
 
     private final ScheduleService scheduleService;
+    private final ScheduleGeneratorService scheduleGeneratorService;
 
     @PreAuthorize("hasRole('ADMIN')")
     @MutationMapping
@@ -75,7 +79,16 @@ public class ScheduleResolver {
     @MutationMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
-    public List<ScheduleItem> generateScheduleForGroup(@Argument GenerateScheduleInput input) {
-        return scheduleService.generateForGroup(input.getGroupId(), input.getStartDate(), input.getDays());
+    public List<ScheduleItem> generateSchedule(@Argument GenerateScheduleRequest request) {
+        List<ScheduleItem> allItems = new ArrayList<>();
+        for (GroupScheduleInput groupInput : request.getGroups()) {
+            List<ScheduleItem> groupItems = scheduleGeneratorService.generateSchedule(
+                    groupInput, 
+                    request.getStartDate(), 
+                    request.getDays()
+            );
+            allItems.addAll(groupItems);
+        }
+        return allItems;
     }
 }

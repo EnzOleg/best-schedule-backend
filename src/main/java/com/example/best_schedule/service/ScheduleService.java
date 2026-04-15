@@ -23,10 +23,6 @@ public class ScheduleService {
     private final ClassroomRepository classroomRepository;
     private final ScheduleGeneratorService generatorService;
 
-    public List<ScheduleItem> generateForGroup(Long groupId, LocalDate startDate, int days) {
-        return generatorService.generateSchedule(groupId, startDate, days);
-    }
-
     @Transactional
     public ScheduleItem createSchedule(CreateScheduleInput input) {
         Group group = groupRepository.findById(input.getGroupId())
