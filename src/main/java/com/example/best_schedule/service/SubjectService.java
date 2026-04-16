@@ -153,6 +153,6 @@ public class SubjectService {
     }
 
     public List<Subject> findAll() {
-        return subjectRepository.findAll();
+        return subjectRepository.findAllWithDetails();
     }
 }

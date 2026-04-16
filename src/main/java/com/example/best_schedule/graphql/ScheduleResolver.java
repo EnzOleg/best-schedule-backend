@@ -1,7 +1,6 @@
 package com.example.best_schedule.graphql;
 
 import com.example.best_schedule.dto.CreateScheduleInput;
-import com.example.best_schedule.dto.GenerateScheduleInput;
 import com.example.best_schedule.dto.GenerateScheduleRequest;
 import com.example.best_schedule.dto.GroupScheduleInput;
 import com.example.best_schedule.entity.ScheduleItem;
@@ -14,7 +13,6 @@ import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 

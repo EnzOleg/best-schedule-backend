@@ -21,7 +21,6 @@ public class ScheduleService {
     private final SubjectRepository subjectRepository;
     private final UserRepository userRepository;
     private final ClassroomRepository classroomRepository;
-    private final ScheduleGeneratorService generatorService;
 
     @Transactional
     public ScheduleItem createSchedule(CreateScheduleInput input) {

@@ -3,8 +3,8 @@ package com.example.best_schedule.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -22,19 +22,18 @@ public class Subject {
     @Column(unique = true)
     private String name;
 
-    // Тип кабинета, который требуется для этого предмета (опционально)
     @Enumerated(EnumType.STRING)
     private ClassroomType requiredClassroomType;
 
-    // в класс Subject добавляем
+    @Builder.Default
     @OneToMany(mappedBy = "subject", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SubjectTeacher> teachers = new ArrayList<>();
+    private Set<SubjectTeacher> teachers = new HashSet<>();
 
-    // Доступные кабинеты (многие ко многим через промежуточную таблицу)
+    @Builder.Default
     @OneToMany(mappedBy = "subject", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SubjectClassroom> allowedClassrooms = new ArrayList<>();
+    private Set<SubjectClassroom> allowedClassrooms = new HashSet<>();
 
-    // Часы для групп (многие ко многим с дополнительным полем hours)
+    @Builder.Default
     @OneToMany(mappedBy = "subject", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SubjectGroupHours> groupHours = new ArrayList<>();
+    private Set<SubjectGroupHours> groupHours = new HashSet<>();
 }

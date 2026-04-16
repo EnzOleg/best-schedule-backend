@@ -70,13 +70,22 @@ type Group {
 type Subject {
     id: ID
     name: String
+    requiredClassroomType: String
+    teachers: [User]
+    allowedClassrooms: [Classroom]
+    groupHours: [SubjectGroupHours]
+}
+
+type SubjectGroupHours {
+    group: Group!
+    hours: Int!
 }
 
 # ==================== КАБИНЕТЫ ====================
 
 type Classroom {
     id: ID!
-    name: String!
+    name: String
     capacity: Int
     type: String
 }

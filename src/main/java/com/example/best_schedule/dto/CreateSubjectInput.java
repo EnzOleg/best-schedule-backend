@@ -4,7 +4,6 @@ import com.example.best_schedule.entity.ClassroomType;
 import lombok.Data;
 
 import java.util.List;
-import java.util.Map;
 
 @Data
 public class CreateSubjectInput {

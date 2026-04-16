@@ -1,6 +1,5 @@
 package com.example.best_schedule.entity;
 
-import com.example.best_schedule.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
