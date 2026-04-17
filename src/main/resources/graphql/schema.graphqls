@@ -125,6 +125,27 @@ type Homework {
     teacher: User
 }
 
+input CreateHomeworkInput {
+    text: String!
+    date: String!
+    scheduleItemId: ID!
+}
+
+extend type Mutation {
+    createHomework(input: CreateHomeworkInput!): Homework
+    updateHomework(
+        id: ID!
+        text: String
+        date: String
+    ): Homework
+
+    deleteHomework(id: ID!): Boolean
+}
+
+extend type Query {
+    homeworkForSchedule(scheduleItemId: ID!): [Homework!]
+}
+
 # ==================== ЛЕКЦИИ ====================
 
 type Lecture {

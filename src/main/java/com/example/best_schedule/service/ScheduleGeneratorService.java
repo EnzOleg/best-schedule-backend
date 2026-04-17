@@ -41,29 +41,23 @@ public class ScheduleGeneratorService {
         Loader.loadNativeLibraries();
     }
 
-    /**
-     * Новый метод генерации расписания с переданными часами.
-     */
     @Transactional
     public List<ScheduleItem> generateSchedule(GroupScheduleInput groupInput, LocalDate startDate, int days) {
-        // 1. Получаем группу со студентами
+        // 1. Группа и количество студентов
         Group group = groupRepository.findByIdWithStudents(groupInput.getGroupId())
                 .orElseThrow(() -> new RuntimeException("Group not found"));
         int studentCount = group.getStudents().size();
 
-        // 2. Из входных данных получаем список предметов и часов
+        // 2. Часы по предметам
         List<SubjectHoursInput> subjectHoursInput = groupInput.getSubjectHours();
         if (subjectHoursInput.isEmpty()) {
-            throw new RuntimeException("No subjects with hours provided for group " + group.getId());
+            throw new RuntimeException("No subjects with hours provided");
         }
-
-        // Мапа subjectId -> часы
         Map<Long, Integer> hoursPerSubject = subjectHoursInput.stream()
                 .collect(Collectors.toMap(SubjectHoursInput::getSubjectId, SubjectHoursInput::getHours));
-
         int totalPairsNeeded = hoursPerSubject.values().stream().mapToInt(Integer::intValue).sum();
 
-        // 3. Фильтруем дни: пропускаем воскресенья
+        // 3. Рабочие дни (без воскресений)
         List<LocalDate> workingDates = new ArrayList<>();
         LocalDate current = startDate;
         int daysAdded = 0;
@@ -76,46 +70,40 @@ public class ScheduleGeneratorService {
         }
         int actualDays = workingDates.size();
         int totalSlots = actualDays * SLOTS_PER_DAY;
-
         if (totalPairsNeeded > totalSlots) {
-            throw new RuntimeException("Not enough working slots (" + totalSlots + ") to place " + totalPairsNeeded + " pairs");
+            throw new RuntimeException("Not enough slots");
         }
 
-        // 4. Загружаем преподавателей и кабинеты для каждого предмета
+        // 4. Данные о преподавателях и кабинетах
         Map<Long, List<User>> subjectTeachers = new HashMap<>();
         Map<Long, List<Classroom>> subjectClassrooms = new HashMap<>();
-
         for (Long subjectId : hoursPerSubject.keySet()) {
             Subject subject = subjectRepository.findByIdWithTeachers(subjectId)
                     .orElseThrow(() -> new RuntimeException("Subject not found: " + subjectId));
-
             List<User> teachers = subject.getTeachers().stream()
                     .map(SubjectTeacher::getTeacher)
-                    .toList();
-            if (teachers.isEmpty()) {
-                throw new RuntimeException("No teachers assigned to subject: " + subject.getName());
-            }
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (teachers.isEmpty()) throw new RuntimeException("No teachers for subject " + subject.getName());
             subjectTeachers.put(subjectId, teachers);
 
-            List<SubjectClassroom> allowedLinks = subjectClassroomRepository
-                    .findAllBySubjectIdWithClassroom(subjectId);
+            List<SubjectClassroom> allowedLinks = subjectClassroomRepository.findAllBySubjectIdWithClassroom(subjectId);
             List<Classroom> suitable = allowedLinks.stream()
                     .map(SubjectClassroom::getClassroom)
+                    .distinct()
                     .filter(c -> c.getCapacity() == null || c.getCapacity() >= studentCount)
-                    .toList();
-            if (suitable.isEmpty()) {
-                throw new RuntimeException("No suitable classrooms for subject: " + subject.getName());
-            }
+                    .collect(Collectors.toList());
+            if (suitable.isEmpty()) throw new RuntimeException("No suitable classrooms for subject " + subject.getName());
             subjectClassrooms.put(subjectId, suitable);
         }
 
-        // 5. Подготовка данных для модели
         List<Long> subjectIds = new ArrayList<>(hoursPerSubject.keySet());
         List<Long> teacherIds = subjectTeachers.values().stream()
-                .flatMap(List::stream).map(User::getId).distinct().toList();
-        List<Long> classroomIds = classroomRepository.findAll().stream().map(Classroom::getId).toList();
+                .flatMap(List::stream).map(User::getId).distinct().collect(Collectors.toList());
+        List<Long> classroomIds = classroomRepository.findAll().stream()
+                .map(Classroom::getId).collect(Collectors.toList());
 
-        // 6. Модель OR-Tools
+        // 5. Модель (без hasLesson, с ограничениями на уникальность преподавателя/кабинета)
         CpModel model = new CpModel();
         int D = actualDays;
         int S = SLOTS_PER_DAY;
@@ -129,17 +117,33 @@ public class ScheduleGeneratorService {
                 for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
                     subjectVar[d][s][subIdx] = model.newBoolVar("sub_" + d + "_" + s + "_" + subIdx);
                 }
-                model.addExactlyOne(subjectVar[d][s]);
+                // Не более одного предмета на слот
+                LinearExprBuilder sumSub = LinearExpr.newBuilder();
+                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
+                    sumSub.add(subjectVar[d][s][subIdx]);
+                }
+                model.addLessOrEqual(sumSub, 1);
 
+                // Преподаватель: ровно один, если есть предмет, иначе 0
                 for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
                     teacherVar[d][s][tIdx] = model.newBoolVar("teacher_" + d + "_" + s + "_" + tIdx);
                 }
-                model.addExactlyOne(teacherVar[d][s]);
+                LinearExprBuilder sumTeacher = LinearExpr.newBuilder();
+                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
+                    sumTeacher.add(teacherVar[d][s][tIdx]);
+                }
+                // Сумма выбранных преподавателей = сумме выбранных предметов (0 или 1)
+                model.addEquality(sumTeacher, sumSub);
 
+                // Кабинет: аналогично
                 for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
                     classroomVar[d][s][cIdx] = model.newBoolVar("classroom_" + d + "_" + s + "_" + cIdx);
                 }
-                model.addExactlyOne(classroomVar[d][s]);
+                LinearExprBuilder sumClass = LinearExpr.newBuilder();
+                for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
+                    sumClass.add(classroomVar[d][s][cIdx]);
+                }
+                model.addEquality(sumClass, sumSub);
             }
         }
 
@@ -161,7 +165,7 @@ public class ScheduleGeneratorService {
             for (int s = 0; s < S; s++) {
                 for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
                     Long subjectId = subjectIds.get(subIdx);
-                    List<Long> allowedTeacherIds = subjectTeachers.get(subjectId).stream().map(User::getId).toList();
+                    List<Long> allowedTeacherIds = subjectTeachers.get(subjectId).stream().map(User::getId).collect(Collectors.toList());
                     for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
                         Long teacherId = teacherIds.get(tIdx);
                         if (!allowedTeacherIds.contains(teacherId)) {
@@ -177,7 +181,7 @@ public class ScheduleGeneratorService {
             for (int s = 0; s < S; s++) {
                 for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
                     Long subjectId = subjectIds.get(subIdx);
-                    List<Long> allowedClassroomIds = subjectClassrooms.get(subjectId).stream().map(Classroom::getId).toList();
+                    List<Long> allowedClassroomIds = subjectClassrooms.get(subjectId).stream().map(Classroom::getId).collect(Collectors.toList());
                     for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
                         Long classroomId = classroomIds.get(cIdx);
                         if (!allowedClassroomIds.contains(classroomId)) {
@@ -188,13 +192,28 @@ public class ScheduleGeneratorService {
             }
         }
 
+        // Уникальность преподавателя в каждом слоте (уже обеспечена через sumTeacher == sumSub)
+        // Уникальность кабинета также обеспечена
+
+        // Уникальность преподавателя по всем слотам (нельзя вести две пары одновременно)
+        for (int d = 0; d < D; d++) {
+            for (int s = 0; s < S; s++) {
+                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
+                    LinearExprBuilder teacherDaySlotSum = LinearExpr.newBuilder();
+                    teacherDaySlotSum.add(teacherVar[d][s][tIdx]);
+                    model.addLessOrEqual(teacherDaySlotSum, 1); // уже есть, но это на всякий случай
+                }
+            }
+        }
+
+        // Решение
         CpSolver solver = new CpSolver();
         CpSolverStatus status = solver.solve(model);
         if (status != CpSolverStatus.FEASIBLE && status != CpSolverStatus.OPTIMAL) {
             throw new RuntimeException("No feasible schedule found");
         }
 
-        // 7. Сохранение результата
+        // Сохранение
         List<ScheduleItem> result = new ArrayList<>();
         for (int d = 0; d < D; d++) {
             LocalDate date = workingDates.get(d);
@@ -206,9 +225,10 @@ public class ScheduleGeneratorService {
                         break;
                     }
                 }
-                if (selectedSubjectId == null) continue;
+                if (selectedSubjectId == null) continue; // пустой слот
 
                 Subject subject = subjectRepository.findById(selectedSubjectId).orElseThrow();
+
                 Long selectedTeacherId = null;
                 for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
                     if (solver.value(teacherVar[d][s][tIdx]) == 1) {
@@ -217,6 +237,7 @@ public class ScheduleGeneratorService {
                     }
                 }
                 User teacher = userRepository.findById(selectedTeacherId).orElseThrow();
+
                 Long selectedClassroomId = null;
                 for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
                     if (solver.value(classroomVar[d][s][cIdx]) == 1) {

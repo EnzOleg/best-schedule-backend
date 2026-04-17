@@ -26,7 +26,8 @@ public interface SubjectRepository extends JpaRepository<Subject, Long> {
 
     // Для списка всех предметов с полной загрузкой
     @Query("SELECT DISTINCT s FROM Subject s " +
-           "LEFT JOIN FETCH s.teachers " +
+           "LEFT JOIN FETCH s.teachers st " +
+           "LEFT JOIN FETCH st.teacher " +
            "LEFT JOIN FETCH s.allowedClassrooms ac " +
            "LEFT JOIN FETCH ac.classroom " +
            "LEFT JOIN FETCH s.groupHours gh " +
