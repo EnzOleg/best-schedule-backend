@@ -39,6 +39,37 @@ public class LectureService {
         return lectureRepository.save(lecture);
     }
 
+    public Lecture updateLecture(Long id, CreateLectureInput input) {
+        Lecture lecture = lectureRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lecture not found"));
+
+        if (input.getDate() != null) lecture.setDate(LocalDate.parse(input.getDate()));
+        if (input.getStartTime() != null) lecture.setStartTime(LocalTime.parse(input.getStartTime()));
+        if (input.getEndTime() != null) lecture.setEndTime(LocalTime.parse(input.getEndTime()));
+        if (input.getClassroom() != null) lecture.setClassroom(input.getClassroom());
+        if (input.getTitle() != null) lecture.setTitle(input.getTitle());
+        if (input.getText() != null) lecture.setText(input.getText());
+
+        if (input.getGroupId() != null) {
+            lecture.setGroup(groupRepository.findById(input.getGroupId()).orElseThrow());
+        }
+        if (input.getSubjectId() != null) {
+            lecture.setSubject(subjectRepository.findById(input.getSubjectId()).orElseThrow());
+        }
+        if (input.getTeacherId() != null) {
+            lecture.setTeacher(userRepository.findById(input.getTeacherId()).orElseThrow());
+        }
+
+        return lectureRepository.save(lecture);
+    }
+
+    public Boolean deleteLecture(Long id) {
+        Lecture lecture = lectureRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lecture not found"));
+        lectureRepository.delete(lecture);
+        return true;
+    }
+
     public List<Lecture> getLecturesForMe(Long userId, String start, String end) {
         return lectureRepository.findByTeacherIdAndDateBetween(
             userId,

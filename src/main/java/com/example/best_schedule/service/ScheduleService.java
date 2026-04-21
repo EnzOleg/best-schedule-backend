@@ -146,6 +146,12 @@ public class ScheduleService {
         return scheduleRepository.findByDateBetween(start, end);
     }
 
+    public List<ScheduleItem> getByTeacherAndDateRange(Long teacherId, String startDate, String endDate) {
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end = LocalDate.parse(endDate);
+        return scheduleRepository.findByTeacherIdAndDateBetween(teacherId, start, end);
+    }
+
     public ScheduleItem getById(Long id) {
         return scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Schedule not found"));

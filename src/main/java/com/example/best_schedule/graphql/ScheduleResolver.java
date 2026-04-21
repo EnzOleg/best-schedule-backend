@@ -68,6 +68,14 @@ public class ScheduleResolver {
         return scheduleService.scheduleForMe(startDate, endDate);
     }
 
+    @QueryMapping
+    public List<ScheduleItem> scheduleByTeacher(
+            @Argument Long teacherId,
+            @Argument String startDate,
+            @Argument String endDate) {
+        return scheduleService.getByTeacherAndDateRange(teacherId, startDate, endDate);
+    }
+
     @MutationMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Boolean deleteSchedule(@Argument Long id) {

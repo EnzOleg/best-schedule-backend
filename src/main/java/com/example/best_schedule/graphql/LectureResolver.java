@@ -21,6 +21,16 @@ public class LectureResolver {
     public Lecture createLecture(@Argument CreateLectureInput input) {
         return lectureService.createLecture(input);
     }
+    
+    @MutationMapping
+    public Lecture updateLecture(@Argument Long id, @Argument CreateLectureInput input) {
+        return lectureService.updateLecture(id, input);
+    }
+
+    @MutationMapping
+    public Boolean deleteLecture(@Argument Long id) {
+        return lectureService.deleteLecture(id);
+    }
 
     @QueryMapping
     public List<Lecture> lecturesByGroup(

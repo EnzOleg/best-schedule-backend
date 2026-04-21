@@ -8,6 +8,7 @@ type Query {
     scheduleByGroup(groupId: ID!): [ScheduleItem]
     scheduleForWeek(groupId: ID!, startDate: String!, endDate: String!): [ScheduleItem]
     scheduleForMe(startDate: String!, endDate: String!): [ScheduleItem]
+    scheduleByTeacher(teacherId: ID!, startDate: String!, endDate: String!): [ScheduleItem]
     lecturesByGroup(groupId: ID!, startDate: String!, endDate: String!): [Lecture]
     lecturesByTeacher(teacherId: ID!, startDate: String!, endDate: String!): [Lecture]
     lecturesForMe(startDate: String!, endDate: String!): [Lecture]
@@ -30,6 +31,8 @@ type Mutation {
     deleteSchedule(id: ID!): Boolean
 
     createLecture(input: CreateLectureInput!): Lecture
+    updateLecture(id: ID!, input: CreateLectureInput!): Lecture
+    deleteLecture(id: ID!): Boolean
 
 }
 
