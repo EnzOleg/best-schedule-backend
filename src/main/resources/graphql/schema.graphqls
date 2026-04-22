@@ -74,9 +74,23 @@ type Subject {
     id: ID
     name: String
     requiredClassroomType: String
-    teachers: [User]
-    allowedClassrooms: [Classroom]
+    teachers: [SubjectTeacher]
+    allowedClassrooms: [SubjectClassroom]
     groupHours: [SubjectGroupHours]
+}
+
+type SubjectTeacher {
+    id: ID!
+    name: String
+    email: String
+}
+
+type SubjectClassroom {
+    id: ID!
+    classroomId: ID!
+    classroomName: String
+    classroomCapacity: Int
+    classroomType: String
 }
 
 type SubjectGroupHours {
@@ -229,7 +243,7 @@ input GroupScheduleInput {
 }
 
 input GenerateScheduleRequest {
-    groups: [GroupScheduleInput!]!   # можно передать одну или несколько групп
+    groups: [GroupScheduleInput!]! 
     startDate: String!
     days: Int!
 }

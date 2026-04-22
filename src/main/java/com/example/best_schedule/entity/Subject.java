@@ -13,6 +13,14 @@ import java.util.Set;
 @AllArgsConstructor
 @Builder
 @Table(name = "subjects")
+// @NamedEntityGraph(
+//     name = "Subject.details",
+//     attributeNodes = {
+//         @NamedAttributeNode("teachers"),
+//         @NamedAttributeNode("allowedClassrooms"),
+//         @NamedAttributeNode("groupHours")
+//     }
+// )
 public class Subject {
 
     @Id

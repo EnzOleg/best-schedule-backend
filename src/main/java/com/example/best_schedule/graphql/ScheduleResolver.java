@@ -86,15 +86,19 @@ public class ScheduleResolver {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public List<ScheduleItem> generateSchedule(@Argument GenerateScheduleRequest request) {
+
         List<ScheduleItem> allItems = new ArrayList<>();
-        for (GroupScheduleInput groupInput : request.getGroups()) {
-            List<ScheduleItem> groupItems = scheduleGeneratorService.generateSchedule(
-                    groupInput, 
-                    request.getStartDate(), 
-                    request.getDays()
-            );
-            allItems.addAll(groupItems);
-        }
+
+        List<GroupScheduleInput> groups = request.getGroups();
+
+        List<ScheduleItem> result = scheduleGeneratorService.generateSchedule(
+                groups,
+                request.getStartDate(),
+                request.getDays()
+        );
+
+        allItems.addAll(result);
+
         return allItems;
     }
 }

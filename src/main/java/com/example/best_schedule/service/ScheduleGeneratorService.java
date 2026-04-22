@@ -42,224 +42,261 @@ public class ScheduleGeneratorService {
     }
 
     @Transactional
-    public List<ScheduleItem> generateSchedule(GroupScheduleInput groupInput, LocalDate startDate, int days) {
-        // 1. Группа и количество студентов
-        Group group = groupRepository.findByIdWithStudents(groupInput.getGroupId())
-                .orElseThrow(() -> new RuntimeException("Group not found"));
-        int studentCount = group.getStudents().size();
+    public List<ScheduleItem> generateSchedule(
+            List<GroupScheduleInput> groupInputs,
+            LocalDate startDate,
+            int days
+    ) {
 
-        // 2. Часы по предметам
-        List<SubjectHoursInput> subjectHoursInput = groupInput.getSubjectHours();
-        if (subjectHoursInput.isEmpty()) {
-            throw new RuntimeException("No subjects with hours provided");
+        // -------------------------
+        // 1. ГРУППЫ
+        // -------------------------
+        List<Group> groups = groupInputs.stream()
+                .map(i -> groupRepository.findByIdWithStudents(i.getGroupId())
+                        .orElseThrow(() -> new RuntimeException("Group not found: " + i.getGroupId())))
+                .toList();
+
+        Map<Long, Integer> groupSize = groups.stream()
+                .collect(Collectors.toMap(Group::getId, g -> g.getStudents().size()));
+
+        // -------------------------
+        // 2. ПРЕДМЕТЫ ВСЕХ ГРУПП
+        // -------------------------
+        Map<Long, Integer> hoursPerSubject = new HashMap<>();
+
+        for (GroupScheduleInput input : groupInputs) {
+            for (SubjectHoursInput sh : input.getSubjectHours()) {
+                hoursPerSubject.merge(sh.getSubjectId(), sh.getHours(), Integer::sum);
+            }
         }
-        Map<Long, Integer> hoursPerSubject = subjectHoursInput.stream()
-                .collect(Collectors.toMap(SubjectHoursInput::getSubjectId, SubjectHoursInput::getHours));
-        int totalPairsNeeded = hoursPerSubject.values().stream().mapToInt(Integer::intValue).sum();
 
-        // 3. Рабочие дни (без воскресений)
+        if (hoursPerSubject.isEmpty()) {
+            throw new RuntimeException("No subjects provided");
+        }
+
+        // -------------------------
+        // 3. ДНИ
+        // -------------------------
         List<LocalDate> workingDates = new ArrayList<>();
         LocalDate current = startDate;
-        int daysAdded = 0;
-        while (daysAdded < days) {
+        int added = 0;
+
+        while (added < days) {
             if (current.getDayOfWeek() != DayOfWeek.SUNDAY) {
                 workingDates.add(current);
-                daysAdded++;
+                added++;
             }
             current = current.plusDays(1);
         }
-        int actualDays = workingDates.size();
-        int totalSlots = actualDays * SLOTS_PER_DAY;
-        if (totalPairsNeeded > totalSlots) {
-            throw new RuntimeException("Not enough slots");
-        }
 
-        // 4. Данные о преподавателях и кабинетах
+        int D = workingDates.size();
+        int S = SLOTS_PER_DAY;
+
+        // -------------------------
+        // 4. ПРЕПОДЫ И КАБИНЕТЫ
+        // -------------------------
         Map<Long, List<User>> subjectTeachers = new HashMap<>();
         Map<Long, List<Classroom>> subjectClassrooms = new HashMap<>();
+
         for (Long subjectId : hoursPerSubject.keySet()) {
+
             Subject subject = subjectRepository.findByIdWithTeachers(subjectId)
-                    .orElseThrow(() -> new RuntimeException("Subject not found: " + subjectId));
+                    .orElseThrow();
+
             List<User> teachers = subject.getTeachers().stream()
                     .map(SubjectTeacher::getTeacher)
                     .distinct()
-                    .collect(Collectors.toList());
-            if (teachers.isEmpty()) throw new RuntimeException("No teachers for subject " + subject.getName());
+                    .toList();
+
             subjectTeachers.put(subjectId, teachers);
 
-            List<SubjectClassroom> allowedLinks = subjectClassroomRepository.findAllBySubjectIdWithClassroom(subjectId);
-            List<Classroom> suitable = allowedLinks.stream()
+            List<SubjectClassroom> links =
+                    subjectClassroomRepository.findAllBySubjectIdWithClassroom(subjectId);
+
+            List<Classroom> classrooms = links.stream()
                     .map(SubjectClassroom::getClassroom)
                     .distinct()
-                    .filter(c -> c.getCapacity() == null || c.getCapacity() >= studentCount)
-                    .collect(Collectors.toList());
-            if (suitable.isEmpty()) throw new RuntimeException("No suitable classrooms for subject " + subject.getName());
-            subjectClassrooms.put(subjectId, suitable);
+                    .toList();
+
+            subjectClassrooms.put(subjectId, classrooms);
         }
 
         List<Long> subjectIds = new ArrayList<>(hoursPerSubject.keySet());
+
         List<Long> teacherIds = subjectTeachers.values().stream()
-                .flatMap(List::stream).map(User::getId).distinct().collect(Collectors.toList());
+                .flatMap(List::stream)
+                .map(User::getId)
+                .distinct()
+                .toList();
+
         List<Long> classroomIds = classroomRepository.findAll().stream()
-                .map(Classroom::getId).collect(Collectors.toList());
+                .map(Classroom::getId)
+                .toList();
 
-        // 5. Модель (без hasLesson, с ограничениями на уникальность преподавателя/кабинета)
+        // -------------------------
+        // 5. MODEL
+        // -------------------------
         CpModel model = new CpModel();
-        int D = actualDays;
-        int S = SLOTS_PER_DAY;
 
-        BoolVar[][][] subjectVar = new BoolVar[D][S][subjectIds.size()];
+        // group -> d -> s -> subject
+        Map<Long, BoolVar[][][]> subjectVar = new HashMap<>();
+
+        // teacher / classroom GLOBAL (ВАЖНО!)
         BoolVar[][][] teacherVar = new BoolVar[D][S][teacherIds.size()];
         BoolVar[][][] classroomVar = new BoolVar[D][S][classroomIds.size()];
 
-        for (int d = 0; d < D; d++) {
-            for (int s = 0; s < S; s++) {
-                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-                    subjectVar[d][s][subIdx] = model.newBoolVar("sub_" + d + "_" + s + "_" + subIdx);
-                }
-                // Не более одного предмета на слот
-                LinearExprBuilder sumSub = LinearExpr.newBuilder();
-                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-                    sumSub.add(subjectVar[d][s][subIdx]);
-                }
-                model.addLessOrEqual(sumSub, 1);
+        // -------------------------
+        // VARIABLES PER GROUP
+        // -------------------------
+        for (Group g : groups) {
 
-                // Преподаватель: ровно один, если есть предмет, иначе 0
-                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
-                    teacherVar[d][s][tIdx] = model.newBoolVar("teacher_" + d + "_" + s + "_" + tIdx);
-                }
-                LinearExprBuilder sumTeacher = LinearExpr.newBuilder();
-                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
-                    sumTeacher.add(teacherVar[d][s][tIdx]);
-                }
-                // Сумма выбранных преподавателей = сумме выбранных предметов (0 или 1)
-                model.addEquality(sumTeacher, sumSub);
+            BoolVar[][][] vars = new BoolVar[D][S][subjectIds.size()];
+            subjectVar.put(g.getId(), vars);
 
-                // Кабинет: аналогично
-                for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
-                    classroomVar[d][s][cIdx] = model.newBoolVar("classroom_" + d + "_" + s + "_" + cIdx);
-                }
-                LinearExprBuilder sumClass = LinearExpr.newBuilder();
-                for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
-                    sumClass.add(classroomVar[d][s][cIdx]);
-                }
-                model.addEquality(sumClass, sumSub);
-            }
-        }
-
-        // Ограничение по часам
-        for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-            Long subjectId = subjectIds.get(subIdx);
-            int requiredHours = hoursPerSubject.get(subjectId);
-            LinearExprBuilder sum = LinearExpr.newBuilder();
             for (int d = 0; d < D; d++) {
                 for (int s = 0; s < S; s++) {
-                    sum.add(subjectVar[d][s][subIdx]);
+
+                    // subject selection
+                    LinearExprBuilder sumSub = LinearExpr.newBuilder();
+
+                    for (int i = 0; i < subjectIds.size(); i++) {
+                        vars[d][s][i] = model.newBoolVar("g" + g.getId() + "_s_" + d + "_" + s + "_" + i);
+                        sumSub.add(vars[d][s][i]);
+                    }
+
+                    model.addLessOrEqual(sumSub, 1);
+
+                    // teacher + classroom (GLOBAL sync)
+                    LinearExprBuilder sumTeacher = LinearExpr.newBuilder();
+                    LinearExprBuilder sumClass = LinearExpr.newBuilder();
+
+                    for (int t = 0; t < teacherIds.size(); t++) {
+                        teacherVar[d][s][t] = teacherVar[d][s][t] != null
+                                ? teacherVar[d][s][t]
+                                : model.newBoolVar("t_" + d + "_" + s + "_" + t);
+
+                        sumTeacher.add(teacherVar[d][s][t]);
+                    }
+
+                    for (int c = 0; c < classroomIds.size(); c++) {
+                        classroomVar[d][s][c] = classroomVar[d][s][c] != null
+                                ? classroomVar[d][s][c]
+                                : model.newBoolVar("c_" + d + "_" + s + "_" + c);
+
+                        sumClass.add(classroomVar[d][s][c]);
+                    }
+
+                    model.addEquality(sumTeacher, sumSub);
+                    model.addEquality(sumClass, sumSub);
                 }
             }
-            model.addEquality(sum, requiredHours);
         }
 
-        // Связь предмет-преподаватель
-        for (int d = 0; d < D; d++) {
-            for (int s = 0; s < S; s++) {
-                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-                    Long subjectId = subjectIds.get(subIdx);
-                    List<Long> allowedTeacherIds = subjectTeachers.get(subjectId).stream().map(User::getId).collect(Collectors.toList());
-                    for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
-                        Long teacherId = teacherIds.get(tIdx);
-                        if (!allowedTeacherIds.contains(teacherId)) {
-                            model.addImplication(subjectVar[d][s][subIdx], teacherVar[d][s][tIdx].not());
-                        }
+        // -------------------------
+        // 6. SUBJECT HOURS PER GROUP
+        // -------------------------
+        for (Group g : groups) {
+            BoolVar[][][] vars = subjectVar.get(g.getId());
+
+            Map<Long, Integer> localHours = groupInputs.stream()
+                    .filter(i -> i.getGroupId().equals(g.getId()))
+                    .flatMap(i -> i.getSubjectHours().stream())
+                    .collect(Collectors.toMap(
+                            SubjectHoursInput::getSubjectId,
+                            SubjectHoursInput::getHours,
+                            Integer::sum
+                    ));
+
+            for (int i = 0; i < subjectIds.size(); i++) {
+                Long subjectId = subjectIds.get(i);
+
+                int hours = localHours.getOrDefault(subjectId, 0);
+
+                LinearExprBuilder sum = LinearExpr.newBuilder();
+
+                for (int d = 0; d < D; d++) {
+                    for (int s = 0; s < S; s++) {
+                        sum.add(vars[d][s][i]);
                     }
                 }
+
+                model.addEquality(sum, hours);
             }
         }
 
-        // Связь предмет-кабинет
+        // -------------------------
+        // 7. TEACHER CONFLICT GLOBAL
+        // -------------------------
         for (int d = 0; d < D; d++) {
             for (int s = 0; s < S; s++) {
-                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-                    Long subjectId = subjectIds.get(subIdx);
-                    List<Long> allowedClassroomIds = subjectClassrooms.get(subjectId).stream().map(Classroom::getId).collect(Collectors.toList());
-                    for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
-                        Long classroomId = classroomIds.get(cIdx);
-                        if (!allowedClassroomIds.contains(classroomId)) {
-                            model.addImplication(subjectVar[d][s][subIdx], classroomVar[d][s][cIdx].not());
-                        }
-                    }
+
+                for (int t = 0; t < teacherIds.size(); t++) {
+
+                    // один преподаватель в одном слоте
+                    model.addLessOrEqual(teacherVar[d][s][t], 1);
                 }
             }
         }
 
-        // Уникальность преподавателя в каждом слоте (уже обеспечена через sumTeacher == sumSub)
-        // Уникальность кабинета также обеспечена
-
-        // Уникальность преподавателя по всем слотам (нельзя вести две пары одновременно)
+        // -------------------------
+        // 8. ROOM CONFLICT GLOBAL
+        // -------------------------
         for (int d = 0; d < D; d++) {
             for (int s = 0; s < S; s++) {
-                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
-                    LinearExprBuilder teacherDaySlotSum = LinearExpr.newBuilder();
-                    teacherDaySlotSum.add(teacherVar[d][s][tIdx]);
-                    model.addLessOrEqual(teacherDaySlotSum, 1); // уже есть, но это на всякий случай
+
+                for (int c = 0; c < classroomIds.size(); c++) {
+                    model.addLessOrEqual(classroomVar[d][s][c], 1);
                 }
             }
         }
 
-        // Решение
+        // -------------------------
+        // 9. SOLVE
+        // -------------------------
         CpSolver solver = new CpSolver();
+        solver.getParameters().setMaxTimeInSeconds(60);
+
         CpSolverStatus status = solver.solve(model);
-        if (status != CpSolverStatus.FEASIBLE && status != CpSolverStatus.OPTIMAL) {
-            throw new RuntimeException("No feasible schedule found");
+
+        if (status != CpSolverStatus.OPTIMAL &&
+            status != CpSolverStatus.FEASIBLE) {
+            throw new RuntimeException("No solution");
         }
 
-        // Сохранение
+        // -------------------------
+        // 10. EXTRACT
+        // -------------------------
         List<ScheduleItem> result = new ArrayList<>();
-        for (int d = 0; d < D; d++) {
-            LocalDate date = workingDates.get(d);
-            for (int s = 0; s < S; s++) {
-                Long selectedSubjectId = null;
-                for (int subIdx = 0; subIdx < subjectIds.size(); subIdx++) {
-                    if (solver.value(subjectVar[d][s][subIdx]) == 1) {
-                        selectedSubjectId = subjectIds.get(subIdx);
-                        break;
+
+        for (Group g : groups) {
+
+            BoolVar[][][] vars = subjectVar.get(g.getId());
+
+            for (int d = 0; d < D; d++) {
+                for (int s = 0; s < S; s++) {
+
+                    for (int i = 0; i < subjectIds.size(); i++) {
+
+                        if (solver.value(vars[d][s][i]) == 1) {
+
+                            Long subjectId = subjectIds.get(i);
+                            Subject subject = subjectRepository.findById(subjectId).orElseThrow();
+
+                            ScheduleItem item = ScheduleItem.builder()
+                                    .date(workingDates.get(d))
+                                    .startTime(SLOT_START_TIMES[s])
+                                    .endTime(SLOT_END_TIMES[s])
+                                    .group(g)
+                                    .subject(subject)
+                                    .build();
+
+                            result.add(item);
+                        }
                     }
                 }
-                if (selectedSubjectId == null) continue; // пустой слот
-
-                Subject subject = subjectRepository.findById(selectedSubjectId).orElseThrow();
-
-                Long selectedTeacherId = null;
-                for (int tIdx = 0; tIdx < teacherIds.size(); tIdx++) {
-                    if (solver.value(teacherVar[d][s][tIdx]) == 1) {
-                        selectedTeacherId = teacherIds.get(tIdx);
-                        break;
-                    }
-                }
-                User teacher = userRepository.findById(selectedTeacherId).orElseThrow();
-
-                Long selectedClassroomId = null;
-                for (int cIdx = 0; cIdx < classroomIds.size(); cIdx++) {
-                    if (solver.value(classroomVar[d][s][cIdx]) == 1) {
-                        selectedClassroomId = classroomIds.get(cIdx);
-                        break;
-                    }
-                }
-                Classroom classroom = classroomRepository.findById(selectedClassroomId).orElseThrow();
-
-                ScheduleItem item = ScheduleItem.builder()
-                        .date(date)
-                        .startTime(SLOT_START_TIMES[s])
-                        .endTime(SLOT_END_TIMES[s])
-                        .classroom(classroom)
-                        .group(group)
-                        .subject(subject)
-                        .teacher(teacher)
-                        .build();
-                result.add(item);
-                scheduleRepository.save(item);
             }
         }
+        scheduleRepository.saveAll(result);
         return result;
     }
 }

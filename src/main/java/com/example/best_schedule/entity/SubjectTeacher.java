@@ -23,4 +23,12 @@ public class SubjectTeacher {
     @ManyToOne
     @JoinColumn(name = "teacher_id")
     private User teacher;
+
+    public String getName() {
+        return teacher != null ? teacher.getName() : null;
+    }
+
+    public String getEmail() {
+        return teacher != null ? teacher.getEmail() : null;
+    }
 }

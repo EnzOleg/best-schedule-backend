@@ -23,4 +23,16 @@ public class SubjectClassroom {
     @ManyToOne
     @JoinColumn(name = "classroom_id")
     private Classroom classroom;
+
+    public Long getClassroomId() {
+        return classroom != null ? classroom.getId() : null;
+    }
+
+    public String getClassroomName() {
+        return classroom != null ? classroom.getName() : null;
+    }
+
+    public Integer getClassroomCapacity() {
+        return classroom != null ? classroom.getCapacity() : null;
+    }
 }
