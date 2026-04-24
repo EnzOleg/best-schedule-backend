@@ -6,6 +6,7 @@ import com.example.best_schedule.repository.GroupRepository;
 import com.example.best_schedule.repository.LectureRepository;
 import com.example.best_schedule.repository.SubjectRepository;
 import com.example.best_schedule.repository.UserRepository;
+import com.example.best_schedule.entity.User;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,8 +24,13 @@ public class LectureService {
     private final SubjectRepository subjectRepository;
     private final UserRepository userRepository;
 
+    // ======================
+    // CREATE / UPDATE / DELETE
+    // ======================
+
     public Lecture createLecture(CreateLectureInput input) {
         Lecture lecture = new Lecture();
+
         lecture.setDate(LocalDate.parse(input.getDate()));
         lecture.setStartTime(LocalTime.parse(input.getStartTime()));
         lecture.setEndTime(LocalTime.parse(input.getEndTime()));
@@ -43,52 +49,71 @@ public class LectureService {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Lecture not found"));
 
-        if (input.getDate() != null) lecture.setDate(LocalDate.parse(input.getDate()));
-        if (input.getStartTime() != null) lecture.setStartTime(LocalTime.parse(input.getStartTime()));
-        if (input.getEndTime() != null) lecture.setEndTime(LocalTime.parse(input.getEndTime()));
-        if (input.getClassroom() != null) lecture.setClassroom(input.getClassroom());
-        if (input.getTitle() != null) lecture.setTitle(input.getTitle());
-        if (input.getText() != null) lecture.setText(input.getText());
+        if (input.getDate() != null)
+            lecture.setDate(LocalDate.parse(input.getDate()));
 
-        if (input.getGroupId() != null) {
+        if (input.getStartTime() != null)
+            lecture.setStartTime(LocalTime.parse(input.getStartTime()));
+
+        if (input.getEndTime() != null)
+            lecture.setEndTime(LocalTime.parse(input.getEndTime()));
+
+        if (input.getClassroom() != null)
+            lecture.setClassroom(input.getClassroom());
+
+        if (input.getTitle() != null)
+            lecture.setTitle(input.getTitle());
+
+        if (input.getText() != null)
+            lecture.setText(input.getText());
+
+        if (input.getGroupId() != null)
             lecture.setGroup(groupRepository.findById(input.getGroupId()).orElseThrow());
-        }
-        if (input.getSubjectId() != null) {
+
+        if (input.getSubjectId() != null)
             lecture.setSubject(subjectRepository.findById(input.getSubjectId()).orElseThrow());
-        }
-        if (input.getTeacherId() != null) {
+
+        if (input.getTeacherId() != null)
             lecture.setTeacher(userRepository.findById(input.getTeacherId()).orElseThrow());
-        }
 
         return lectureRepository.save(lecture);
     }
 
     public Boolean deleteLecture(Long id) {
-        Lecture lecture = lectureRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Lecture not found"));
-        lectureRepository.delete(lecture);
+        lectureRepository.deleteById(id);
         return true;
     }
 
-    public List<Lecture> getLecturesForMe(Long userId, String start, String end) {
-        return lectureRepository.findByTeacherIdAndDateBetween(
-            userId,
-            LocalDate.parse(start),
-            LocalDate.parse(end)
-        );
-    }
+    // ======================
+    // READ (РОЛИ)
+    // ======================
 
-    public List<Lecture> getByGroupAndDateRange(Long groupId, String start, String end) {
-        return lectureRepository.findByGroupIdAndDateBetween(
-                groupId,
+    public List<Lecture> getForStudent(Long userId, String start, String end) {
+        return lectureRepository.findLecturesForStudent(
+                userId,
                 LocalDate.parse(start),
                 LocalDate.parse(end)
         );
     }
 
-    public List<Lecture> getByTeacherAndDateRange(Long teacherId, String start, String end) {
+    public List<Lecture> getForTeacher(Long teacherId, String start, String end) {
         return lectureRepository.findByTeacherIdAndDateBetween(
                 teacherId,
+                LocalDate.parse(start),
+                LocalDate.parse(end)
+        );
+    }
+
+    public List<Lecture> getForAdmin(String start, String end) {
+        return lectureRepository.findByDateBetween(
+                LocalDate.parse(start),
+                LocalDate.parse(end)
+        );
+    }
+
+    public List<Lecture> getByGroup(Long groupId, String start, String end) {
+        return lectureRepository.findByGroupIdAndDateBetween(
+                groupId,
                 LocalDate.parse(start),
                 LocalDate.parse(end)
         );

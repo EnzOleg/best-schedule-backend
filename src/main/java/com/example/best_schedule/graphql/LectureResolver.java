@@ -33,34 +33,19 @@ public class LectureResolver {
     }
 
     @QueryMapping
-    public List<Lecture> lecturesByGroup(
-            @Argument Long groupId,
-            @Argument String startDate,
-            @Argument String endDate
-    ) {
-        return lectureService.getByGroupAndDateRange(groupId, startDate, endDate);
-    }
-
-    @QueryMapping
-    public List<Lecture> lecturesByTeacher(
-            @Argument Long teacherId,
-            @Argument String startDate,
-            @Argument String endDate
-    ) {
-        return lectureService.getByTeacherAndDateRange(teacherId, startDate, endDate);
-    }
-
-    @QueryMapping
     public List<Lecture> lecturesForMe(
             @Argument String startDate,
             @Argument String endDate,
-            @AuthenticationPrincipal User user  // <- берём прямо из контекста Spring Security
+            @AuthenticationPrincipal User user
     ) {
         if (user == null) {
             throw new RuntimeException("User not authenticated");
         }
 
-        Long userId = user.getId();
-        return lectureService.getLecturesForMe(userId, startDate, endDate);
+        return switch (user.getRole()) {
+            case STUDENT -> lectureService.getForStudent(user.getId(), startDate, endDate);
+            case TEACHER -> lectureService.getForTeacher(user.getId(), startDate, endDate);
+            case ADMIN -> lectureService.getForAdmin(startDate, endDate);
+        };
     }
 }

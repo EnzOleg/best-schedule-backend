@@ -24,7 +24,7 @@ public class HomeworkService {
     ) {
         Homework hw = new Homework();
         hw.setText(text);
-        hw.setDate(date);
+        hw.setDate(scheduleItem.getDate());
         hw.setScheduleItem(scheduleItem);
         hw.setTeacher(teacher);
 
@@ -38,7 +38,6 @@ public class HomeworkService {
     public Homework updateHomework(
             Long id,
             String text,
-            LocalDate date,
             User teacher
     ) {
         Homework hw = homeworkRepository.findById(id)
@@ -50,10 +49,6 @@ public class HomeworkService {
 
         if (text != null && !text.isBlank()) {
             hw.setText(text);
-        }
-
-        if (date != null) {
-            hw.setDate(date);
         }
 
         return homeworkRepository.save(hw);

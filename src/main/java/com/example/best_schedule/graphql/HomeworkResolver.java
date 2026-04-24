@@ -44,31 +44,24 @@ public class HomeworkResolver {
         }
 
         ScheduleItem item = scheduleService.getById(input.getScheduleItemId());
-        LocalDate parsedDate = LocalDate.parse(input.getDate());
-
-        if (!parsedDate.equals(item.getDate())) {
-            throw new RuntimeException("Homework date must match the lesson date");
-        }
 
         return homeworkService.createHomework(
-                input.getText(),
-                parsedDate,
-                item,
-                teacher
+            input.getText(),
+            item.getDate(),
+            item,
+            teacher
         );
     }
 
     @MutationMapping
     public Homework updateHomework(
             @Argument Long id,
-            @Argument String text,
-            @Argument String date
+            @Argument String text
     ) {
         User teacher = userService.getCurrentUser();
         return homeworkService.updateHomework(
                 id,
                 text,
-                date != null ? LocalDate.parse(date) : null,
                 teacher
         );
     }
